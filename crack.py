@@ -34,8 +34,7 @@ def get_pos(image):
                 continue
             x, y, w, h = cv.boundingRect(contour)  # 外接矩形
             cv.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv.imwrite("done.jpg", image)
-            print({'x': x, "y": y, "w": w, "h": h})
+            cv.imwrite("img/done.jpg", image)
             # cv.imshow('image', image)
             return x
     return 0
@@ -43,7 +42,6 @@ def get_pos(image):
 
 def fake_drag(browser, knob, offset):
     offsets, tracks = easing.get_tracks(offset, 1, 'ease_out_expo')
-    print(offsets)
     start = datetime.datetime.now()
     ActionChains(browser).click_and_hold(knob).perform()
     for x in tracks:
@@ -63,17 +61,13 @@ def crack(driver, retry_num):
         )
 
         driver.switch_to.frame("tcaptcha_popup")
-        # driver.switch_to.frame(0)
-        # driver.switch_to.frame(driver.find_element_by_xpath("//iframe[contains(@style,'z-index: 2000000001')]"))
 
         img = driver.find_element_by_id("slideBkg")
         src = img.get_attribute("src")
 
-        urllib.request.urlretrieve(src, "origin.jpg")
+        urllib.request.urlretrieve(src, "img/origin.jpg")
 
-        origin_img = cv.imread('./origin.jpg')
-        # new_img = cv.resize(img0, (340, 195))
-        # cv.imwrite("new_img.jpg", img0)
+        origin_img = cv.imread('img/origin.jpg')
 
         x_pox = get_pos(origin_img)
 
