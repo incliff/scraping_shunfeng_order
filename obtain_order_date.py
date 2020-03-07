@@ -1,31 +1,62 @@
 #!D:\DEV\Python\Python38-32
 
-import datetime
+import argparse
+import logging
+import time
+from datetime import datetime
 
 import xlrd
+import xlwt
 from xlutils.copy import copy
 
 import scraping
 
+timeout = 7 * 24 * 60 * 60
 
-def main():
-    start_time = datetime.datetime.now()
 
-    # 读取excel单号数据
-    workbook = xlrd.open_workbook("order.xls", formatting_info=True)
-    sheet = workbook.sheet_by_index(0)
-    num_list = sheet.col_values(0)
-    date_list = sheet.col_values(1)
+def main(excel_path):
+    try:
+        start_time = datetime.now()
 
-    filter_order = []
-    for num in enumerate(num_list):
-        if date_list[num[0]] == '' and num[1] != '':
-            filter_order.append(num)
+        print("存放数据的excel路径: {}".format(excel_path))
+        order_length = scraping_and_save_to_excel(excel_path)
+
+        end_time = datetime.now()
+        user_time = (end_time - start_time).seconds
+        print("共查询数据 {} 条，用时 {}，平均每条用时 {} 秒".format(
+            order_length,
+            format_datetime(user_time),
+            round(user_time / order_length, 2)
+        ))
+
+    except PermissionError as e:
+        print_error(e, "请在关闭【order.xls】文件后，重新执行脚本。")
+    except BaseException as e:
+        print_error(e, "数据处理出错，点击【回车键】关闭命令行")
+    finally:
+        pass
+
+
+def print_error(e, text):
+    logging.exception(e)
+    time.sleep(1)
+    input("=======================================\n"
+          "==== " + text + " ===\n"
+                           "=======================================")
+
+
+def scraping_and_save_to_excel(excel_path):
+    workbook = xlrd.open_workbook(excel_path, formatting_info=True)
+
+    order_num_list = read_order_num_from_excel(workbook)
 
     # 将每20条数据分组
-    group_list = [filter_order[i:i + 20] for i in range(0, len(filter_order), 20)]
+    group_list = [order_num_list[i:i + 20] for i in range(0, len(order_num_list), 20)]
 
-    copy_workbook = ""
+    copy_workbook = copy(workbook)
+    copy_sheet = copy_workbook.get_sheet(0)
+
+    style = get_red_style_cell()
 
     for i, order_list in enumerate(group_list):
 
@@ -35,40 +66,89 @@ def main():
 
         # 未获取到数据
         if len(result_list) == 0:
-            print("数据为空，行号为{}".format(0))
             continue
 
-        if copy_workbook == "":
-            copy_workbook = copy(workbook)
-
-        copy_sheet = copy_workbook.get_sheet(0)
-
         for j, num in enumerate(order_list):
-            order = result_list.get(num[1].strip(), -1)
-            if order == -1:
+            row_num = num[0]
+            order_num = num[1]
+            order_date = result_list.get(order_num.strip(), -1)
+            if order_date == -1:
                 continue
 
-            copy_sheet.write(num[0], 1, num[1])
-            copy_sheet.write(num[0], 2, order['start_time'])
-            copy_sheet.write(num[0], 3, order['end_time'])
+            copy_sheet.write(row_num, 1, order_num)
+            copy_sheet.write(row_num, 2, order_date['start_time'])
+            copy_sheet.write(row_num, 3, order_date['end_time'])
 
+            between_seconds = (
+                    datetime.strptime(order_date['start_time'], '%Y-%m-%d %H:%M') -
+                    datetime.strptime(order_date['end_time'], '%Y-%m-%d %H:%M')
+            ).seconds
+
+            if between_seconds >= timeout:
+                copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1), style)
+            else:
+                copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1))
+
+            # 设置列宽
             copy_sheet.col(0).width = 5000
             copy_sheet.col(1).width = 5000
             copy_sheet.col(2).width = 5000
             copy_sheet.col(3).width = 5000
 
-            print("第{}行写入数据".format(num[0] + 1))
+            print("第{}行写入数据".format(row_num + 1))
 
-        copy_workbook.save('order.xls')
+        copy_workbook.save(excel_path)
+    return len(order_num_list)
 
-    end_time = datetime.datetime.now()
-    user_time = (end_time - start_time).seconds
-    print("共查询数据 {} 条，用时 {} 秒，平均每条用时 {} 秒".format(
-        len(filter_order),
-        user_time,
-        round(user_time / len(filter_order), 2)
-    ))
+
+def get_red_style_cell():
+    pattern = xlwt.Pattern()  # Create the Pattern
+    pattern.pattern = xlwt.Pattern.SOLID_PATTERN  # May be: NO_PATTERN, SOLID_PATTERN, or 0x00 through 0x12
+    pattern.pattern_fore_colour = 2  # May be: 8 through 63. 0 = Black, 1 = White, 2 = Red, 3 = Green, 4 = Blue, 5 = Yellow, 6 = Magenta, 7 = Cyan, 16 = Maroon, 17 = Dark Green, 18 = Dark Blue, 19 = Dark Yellow , almost brown), 20 = Dark Magenta, 21 = Teal, 22 = Light Gray, 23 = Dark Gray, the list goes on...
+    style = xlwt.XFStyle()  # Create the Pattern
+    style.pattern = pattern  # Add Pattern to Style
+    return style
+
+
+# 读取excel单号数据
+def read_order_num_from_excel(workbook):
+    sheet = workbook.sheet_by_index(0)
+    num_list = sheet.col_values(0)
+    date_list = sheet.col_values(1)
+    filter_order = []
+    for num in enumerate(num_list):
+        if date_list[num[0]] == '' and num[1] != '':
+            filter_order.append(num)
+    return filter_order
+
+
+# accurate_unit 0 秒, 1 分, 2 小时, 3 天
+def format_datetime(between_seconds, accurate_unit=0):
+    if between_seconds == 0:
+        return ""
+
+    elif between_seconds < 60:
+        return "{} 秒 ".format(between_seconds)
+
+    elif 60 <= between_seconds < 3600:
+        return "{} 分 ".format(between_seconds // 60) + (
+            format_datetime(between_seconds % 60, accurate_unit) if accurate_unit < 1 else "")
+
+    elif 3600 <= between_seconds < 86400:
+        return "{} 小时 ".format(between_seconds // 3600) + (
+            format_datetime(between_seconds % 3600, accurate_unit) if accurate_unit < 2 else "")
+
+    elif between_seconds >= 86400:
+        return "{} 天 ".format(between_seconds // 86400) + (
+            format_datetime(between_seconds % 86400, accurate_unit) if accurate_unit < 3 else "")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="scraping shunfeng order data")
+    parser.add_argument("--path", "-p", help="存放数据的excel路径，非必要参数", default="order.xls")
+    parser.add_argument("--timeout_day", "-t", help="订单时间差的超时时长，非必要参数", default=7)
+    args = parser.parse_args()
+
+    day = args.timeout_day
+    timeout = day * 24 * 60 * 60
+    main(args.path)

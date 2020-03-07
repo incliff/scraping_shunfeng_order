@@ -1,20 +1,13 @@
 #!D:\DEV\Python\Python38-32
-from selenium import webdriver
-from selenium.webdriver import ActionChains
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-
-import xlrd
-from xlutils.copy import copy
+import datetime
+import urllib.request
 
 import cv2 as cv
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
-import urllib.request
-import datetime
-import time
-import random
 import easing
 
 
@@ -42,19 +35,13 @@ def get_pos(image):
 
 def fake_drag(browser, knob, offset):
     offsets, tracks = easing.get_tracks(offset, 1, 'ease_out_expo')
-    start = datetime.datetime.now()
     ActionChains(browser).click_and_hold(knob).perform()
     for x in tracks:
         ActionChains(browser).move_by_offset(x, 0).perform()
     ActionChains(browser).pause(0.2).release().perform()
-    
-    end = datetime.datetime.now()
-    print((end-start).seconds)
-    return
 
 
 def crack(driver, retry_num):
-
     try:
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "tcaptcha_popup"))
