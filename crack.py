@@ -1,5 +1,5 @@
 #!D:\DEV\Python\Python38-32
-import datetime
+import logging
 import urllib.request
 
 import cv2 as cv
@@ -9,36 +9,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 import easing
-
-
-def get_pos(image):
-    blurred = cv.GaussianBlur(image, (5, 5), 0)
-    canny = cv.Canny(blurred, 200, 400)
-    contours, hierarchy = cv.findContours(
-        canny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    for i, contour in enumerate(contours):
-        M = cv.moments(contour)
-        if M['m00'] == 0:
-            cx = cy = 0
-        else:
-            cx, cy = M['m10'] / M['m00'], M['m01'] / M['m00']
-        if 6000 < cv.contourArea(contour) < 8000 and 370 < cv.arcLength(contour, True) < 390:
-            if cx < 400:
-                continue
-            x, y, w, h = cv.boundingRect(contour)  # 外接矩形
-            cv.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv.imwrite("img/done.jpg", image)
-            # cv.imshow('image', image)
-            return x
-    return 0
-
-
-def fake_drag(browser, knob, offset):
-    offsets, tracks = easing.get_tracks(offset, 1, 'ease_out_expo')
-    ActionChains(browser).click_and_hold(knob).perform()
-    for x in tracks:
-        ActionChains(browser).move_by_offset(x, 0).perform()
-    ActionChains(browser).pause(0.2).release().perform()
 
 
 def crack(driver, retry_num):
@@ -75,7 +45,38 @@ def crack(driver, retry_num):
 
         fake_drag(driver, drag_button, drag_length)
 
-    except BaseException as base_exc:
-        print("破解图片出错: ", base_exc)
+    except BaseException as e:
+        print("破解图片出错: ", e)
+        logging.exception(e)
     finally:
         print("破解图片结束")
+
+
+def get_pos(image):
+    blurred = cv.GaussianBlur(image, (5, 5), 0)
+    canny = cv.Canny(blurred, 200, 400)
+    contours, hierarchy = cv.findContours(
+        canny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    for i, contour in enumerate(contours):
+        M = cv.moments(contour)
+        if M['m00'] == 0:
+            cx = cy = 0
+        else:
+            cx, cy = M['m10'] / M['m00'], M['m01'] / M['m00']
+        if 6000 < cv.contourArea(contour) < 8000 and 370 < cv.arcLength(contour, True) < 390:
+            if cx < 400:
+                continue
+            x, y, w, h = cv.boundingRect(contour)  # 外接矩形
+            cv.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv.imwrite("img/done.jpg", image)
+            # cv.imshow('image', image)
+            return x
+    return 0
+
+
+def fake_drag(browser, knob, offset):
+    offsets, tracks = easing.get_tracks(offset, 1, 'ease_out_expo')
+    ActionChains(browser).click_and_hold(knob).perform()
+    for x in tracks:
+        ActionChains(browser).move_by_offset(x, 0).perform()
+    ActionChains(browser).pause(0.2).release().perform()

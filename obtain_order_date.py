@@ -4,6 +4,8 @@ import argparse
 import logging
 import time
 from datetime import datetime
+from functools import partial
+from multiprocessing import Pool, Manager
 
 import xlrd
 import xlwt
@@ -28,6 +30,7 @@ def main(excel_path):
             format_datetime(user_time),
             round(user_time / order_length, 2)
         ))
+        time.sleep(3)
 
     except PermissionError as e:
         print_error(e, "请在关闭【order.xls】文件后，重新执行脚本。")
@@ -53,61 +56,29 @@ def scraping_and_save_to_excel(excel_path):
     # 将每20条数据分组
     group_list = [order_num_list[i:i + 20] for i in range(0, len(order_num_list), 20)]
 
-    copy_workbook = copy(workbook)
-    copy_sheet = copy_workbook.get_sheet(0)
-
-    style = get_red_style_cell()
-
+    num_list_str_list = []
     for i, order_list in enumerate(group_list):
+        num_list_iter = map(lambda x: x[1], order_list)
+        num_list_str_list.append(",".join(str(v) for v in num_list_iter))
 
-        # 顺丰官网获取数据
-        num_list = map(lambda x: x[1], order_list)
-        result_list = scraping.scraping_oder_time(",".join(str(v) for v in num_list))
+    # 多进程抓取数据
+    p = Pool(8)
+    wrap_func = partial(scraping.scraping_oder_time, lock=Manager().Lock())
+    result_list = p.map(wrap_func, num_list_str_list)
+    p.close()
+    p.join()
 
-        # 未获取到数据
-        if len(result_list) == 0:
-            continue
+    result_dict = {}
+    for x in result_list:
+        result_dict.update(x)
 
-        for j, num in enumerate(order_list):
-            row_num = num[0]
-            order_num = num[1]
-            order_date = result_list.get(order_num.strip(), -1)
-            if order_date == -1:
-                continue
+    print("查询结果{}条：{}".format(len(result_dict), result_dict))
 
-            copy_sheet.write(row_num, 1, order_num)
-            copy_sheet.write(row_num, 2, order_date['start_time'])
-            copy_sheet.write(row_num, 3, order_date['end_time'])
+    # 未获取到数据
+    if len(result_dict) != 0:
+        write_to_excel(workbook, order_num_list, result_dict, excel_path)
 
-            between_seconds = (
-                    datetime.strptime(order_date['start_time'], '%Y-%m-%d %H:%M') -
-                    datetime.strptime(order_date['end_time'], '%Y-%m-%d %H:%M')
-            ).seconds
-
-            if between_seconds >= timeout:
-                copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1), style)
-            else:
-                copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1))
-
-            # 设置列宽
-            copy_sheet.col(0).width = 5000
-            copy_sheet.col(1).width = 5000
-            copy_sheet.col(2).width = 5000
-            copy_sheet.col(3).width = 5000
-
-            print("第{}行写入数据".format(row_num + 1))
-
-        copy_workbook.save(excel_path)
     return len(order_num_list)
-
-
-def get_red_style_cell():
-    pattern = xlwt.Pattern()  # Create the Pattern
-    pattern.pattern = xlwt.Pattern.SOLID_PATTERN  # May be: NO_PATTERN, SOLID_PATTERN, or 0x00 through 0x12
-    pattern.pattern_fore_colour = 2  # May be: 8 through 63. 0 = Black, 1 = White, 2 = Red, 3 = Green, 4 = Blue, 5 = Yellow, 6 = Magenta, 7 = Cyan, 16 = Maroon, 17 = Dark Green, 18 = Dark Blue, 19 = Dark Yellow , almost brown), 20 = Dark Magenta, 21 = Teal, 22 = Light Gray, 23 = Dark Gray, the list goes on...
-    style = xlwt.XFStyle()  # Create the Pattern
-    style.pattern = pattern  # Add Pattern to Style
-    return style
 
 
 # 读取excel单号数据
@@ -120,6 +91,52 @@ def read_order_num_from_excel(workbook):
         if date_list[num[0]] == '' and num[1] != '':
             filter_order.append(num)
     return filter_order
+
+
+def write_to_excel(workbook, order_list, result_dict, excel_path):
+    copy_workbook = copy(workbook)
+    copy_sheet = copy_workbook.get_sheet(0)
+
+    style = get_red_style_cell()
+
+    for j, num in enumerate(order_list):
+        row_num = num[0]
+        order_num = num[1]
+        order_date = result_dict.get(order_num.strip(), -1)
+        if order_date == -1:
+            continue
+
+        copy_sheet.write(row_num, 1, order_num)
+        copy_sheet.write(row_num, 2, order_date['start_time'])
+        copy_sheet.write(row_num, 3, order_date['end_time'])
+
+        between_seconds = (
+                datetime.strptime(order_date['start_time'], '%Y-%m-%d %H:%M') -
+                datetime.strptime(order_date['end_time'], '%Y-%m-%d %H:%M')
+        ).seconds
+
+        if between_seconds >= timeout:
+            copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1), style)
+        else:
+            copy_sheet.write(row_num, 4, format_datetime(between_seconds, accurate_unit=1))
+
+        # 设置列宽
+        copy_sheet.col(0).width = 5000
+        copy_sheet.col(1).width = 5000
+        copy_sheet.col(2).width = 5000
+        copy_sheet.col(3).width = 5000
+
+        print("第{}行写入数据".format(row_num + 1))
+    copy_workbook.save(excel_path)
+
+
+def get_red_style_cell():
+    pattern = xlwt.Pattern()  # Create the Pattern
+    pattern.pattern = xlwt.Pattern.SOLID_PATTERN  # May be: NO_PATTERN, SOLID_PATTERN, or 0x00 through 0x12
+    pattern.pattern_fore_colour = 2  # May be: 8 through 63. 0 = Black, 1 = White, 2 = Red, 3 = Green, 4 = Blue, 5 = Yellow, 6 = Magenta, 7 = Cyan, 16 = Maroon, 17 = Dark Green, 18 = Dark Blue, 19 = Dark Yellow , almost brown), 20 = Dark Magenta, 21 = Teal, 22 = Light Gray, 23 = Dark Gray, the list goes on...
+    style = xlwt.XFStyle()  # Create the Pattern
+    style.pattern = pattern  # Add Pattern to Style
+    return style
 
 
 # accurate_unit 0 秒, 1 分, 2 小时, 3 天

@@ -1,7 +1,10 @@
 #!D:\DEV\Python\Python38-32
+import logging
+
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -9,12 +12,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 import crack
 
 
-def scraping_oder_time(num_str):
-    driver = webdriver.Chrome(executable_path="./driver/chromedriver_80.exe")
+def scraping_oder_time(num_str, lock):
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--disable-gpu')
+
+    driver = webdriver.Chrome(executable_path="./driver/chromedriver_80.exe", options=chrome_options)
     driver.get(
         "https://www.sf-express.com/cn/sc/dynamic_function/waybill/#search/bill-number/" + num_str)
 
-    crack.crack(driver, 3)
+    try:
+        lock.acquire()
+        crack.crack(driver, 3)
+    finally:
+        lock.release()
 
     result = {}
     try:
@@ -32,9 +43,9 @@ def scraping_oder_time(num_str):
         result = extract_order_data(deliveries)
 
     except TimeoutException as e:
-        print("等待超时：", e)
+        logging.exception(e)
     except WebDriverException as e:
-        print("WebDriverException：", e)
+        logging.exception(e)
     finally:
         print("查询到数据{}条".format(len(result)) + "，关闭浏览器")
         if len(result) != 0:
