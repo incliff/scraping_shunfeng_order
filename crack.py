@@ -1,5 +1,6 @@
 #!D:\DEV\Python\Python38-32
 import logging
+import random
 import urllib.request
 
 import cv2 as cv
@@ -12,8 +13,9 @@ import easing
 
 
 def crack(driver, retry_num):
+    print("start crack")
     try:
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 25).until(
             EC.presence_of_element_located((By.ID, "tcaptcha_popup"))
         )
 
@@ -22,9 +24,9 @@ def crack(driver, retry_num):
         img = driver.find_element_by_id("slideBkg")
         src = img.get_attribute("src")
 
-        urllib.request.urlretrieve(src, "img/origin.jpg")
+        urllib.request.urlretrieve(src, "output/img/origin.jpg")
 
-        origin_img = cv.imread('img/origin.jpg')
+        origin_img = cv.imread('output/img/origin.jpg')
 
         x_pox = get_pos(origin_img)
 
@@ -48,8 +50,14 @@ def crack(driver, retry_num):
     except BaseException as e:
         print("破解图片出错: ", e)
         logging.exception(e)
+
+        width = driver.execute_script("return document.documentElement.scrollWidth")
+        height = driver.execute_script("return document.documentElement.scrollHeight")
+        driver.set_window_size(width, height)
+        driver.save_screenshot("./output/img/screenshot/{}.png".format(random.randint(1000, 9999)))
     finally:
         print("破解图片结束")
+        print("end crack")
 
 
 def get_pos(image):
@@ -68,7 +76,7 @@ def get_pos(image):
                 continue
             x, y, w, h = cv.boundingRect(contour)  # 外接矩形
             cv.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv.imwrite("img/done.jpg", image)
+            cv.imwrite("output/img/done.jpg", image)
             # cv.imshow('image', image)
             return x
     return 0

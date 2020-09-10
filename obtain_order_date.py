@@ -62,7 +62,7 @@ def scraping_and_save_to_excel(excel_path):
         num_list_str_list.append(",".join(str(v) for v in num_list_iter))
 
     # 多进程抓取数据
-    p = Pool(8)
+    p = Pool(4)
     wrap_func = partial(scraping.scraping_oder_time, lock=Manager().Lock())
     result_list = p.map(wrap_func, num_list_str_list)
     p.close()
